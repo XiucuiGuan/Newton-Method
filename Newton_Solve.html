@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Newton-Raphson Solver - Styled Final Version</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.1/math.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+      background-color: #f7f9fb;
+      color: #333;
+      max-width: 960px;
+      margin: 30px auto;
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+      color: #1e3a8a;
+    }
+    .card {
+      background-color: #fff;
+      padding: 25px 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      margin-bottom: 25px;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 12px;
+    }
+    input[type="text"],
+    input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 4px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    button {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      font-size: 15px;
+      border-radius: 6px;
+      margin-right: 10px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:hover {
+      background-color: #1e40af;
+    }
+    .hint-box {
+      background-color: #e0f2fe;
+      padding: 15px;
+      border-radius: 10px;
+      margin-top: 15px;
+      display: none;
+      font-size: 15px;
+    }
+    .hint-box code {
+      background-color: #cbd5e1;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    #chart-container {
+      display: none;
+      margin-top: 30px;
+    }
+    canvas {
+      background: white;
+      border-radius: 10px;
+    }
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #d1d5db;
+    }
+    th {
+      background-color: #f1f5f9;
+    }
+    code {
+      background-color: #f3f4f6;
+      padding: 3px 6px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h2>🧮 Newton-Raphson Interactive Solver</h2>
+
+  <div class="card">
+    <label>函数 f(x)：</label>
+    <input id="functionInput" value="x^3 - 2x + 1">
+
+    <label>初始猜测 x₀：</label>
+    <input id="initialGuess" type="number" value="1">
+
+    <label>最大迭代次数：</label>
+    <input id="maxIterations" type="number" value="20">
+
+    <button onclick="runNewton()">开始迭代</button>
+    <button onclick="toggleChart()">切换图像显示</button>
+    <button onclick="toggleHelp()">切换语法帮助</button>
+    <label style="margin-left: 10px;">
+      <input type="checkbox" id="showTangents" disabled> 显示切线
+    </label>
+
+    <div id="helpBox" class="hint-box">
+      <strong>支持的数学表达式格式：</strong>
+      <ul>
+        <li><code>x^2</code> —— 平方</li>
+        <li><code>sqrt(x)</code> —— 平方根</li>
+        <li><code>sin(x), cos(x), tan(x)</code> —— 三角函数（弧度制）</li>
+        <li><code>log(x)</code> —— 自然对数（以 e 为底）</li>
+        <li><code>log10(x)</code> —— 常用对数</li>
+        <li><code>abs(x)</code> —— 绝对值</li>
+        <li><code>exp(x)</code> —— e 的 x 次幂</li>
+        <li><code>pi, e</code> —— 常量</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" id="chart-container">
+    <canvas id="plotCanvas" height="400"></canvas>
+  </div>
+
+  <div class="card" id="output"></div>
+
+  <script>
+    let chart;
+    let latestIterData = null;
+
+    function toggleHelp() {
+      const helpBox = document.getElementById("helpBox");
+      helpBox.style.display = helpBox.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function toggleChart() {
+      const chartContainer = document.getElementById("chart-container");
+      const showTangents = document.getElementById("showTangents");
+      if (chartContainer.style.display === 'none') {
+        chartContainer.style.display = 'block';
+        showTangents.disabled = false;
+        if (latestIterData) drawChart(latestIterData.fEval, latestIterData.iterData);
+      } else {
+        chartContainer.style.display = 'none';
+        showTangents.disabled = true;
+      }
+    }
+
+    function runNewton() {
+      const fExpr = document.getElementById("functionInput").value;
+      const x0 = parseFloat(document.getElementById("initialGuess").value);
+      const maxIter = parseInt(document.getElementById("maxIterations").value);
+      const output = document.getElementById("output");
+      output.innerHTML = '';
+
+      try {
+        const f = math.parse(fExpr);
+        const df = math.derivative(f, 'x');
+        const fEval = f.compile();
+        const dfEval = df.compile();
+
+        let x = x0;
+        let tolerance = 1e-6;
+        let iterData = [];
+
+        for (let i = 0; i < maxIter; i++) {
+          let fx = fEval.evaluate({ x });
+          let dfx = dfEval.evaluate({ x });
+          if (Math.abs(dfx) < 1e-8) {
+            output.innerHTML = `<p style="color:red">导数过小，无法继续。</p>`;
+            return;
+          }
+          let xNew = x - fx / dfx;
+          let err = Math.abs(xNew - x);
+          iterData.push({ iter: i + 1, x, fx, dfx, err });
+          if (err < tolerance) break;
+          x = xNew;
+        }
+
+        latestIterData = { fEval, iterData };
+        if (document.getElementById("chart-container").style.display !== 'none') {
+          drawChart(fEval, iterData);
+        }
+
+        let html = '<table><tr><th>迭代步</th><th>x</th><th>f(x)</th><th>f\'(x)</th><th>误差</th></tr>';
+        iterData.forEach(row => {
+          html += `<tr><td>${row.iter}</td><td>${row.x.toFixed(6)}</td><td>${row.fx.toFixed(6)}</td><td>${row.dfx.toFixed(6)}</td><td>${row.err.toExponential(2)}</td></tr>`;
+        });
+        html += '</table>';
+        html += `<p><strong>最终结果：</strong> x ≈ <code>${x.toFixed(6)}</code></p>`;
+        output.innerHTML = html;
+      } catch (err) {
+        output.innerHTML = `<p style="color:red">函数解析错误，请检查表达式是否正确。</p>`;
+        console.error(err);
+      }
+    }
+
+    function drawChart(fEval, iterData) {
+      const canvas = document.getElementById("plotCanvas");
+      const showTangents = document.getElementById("showTangents").checked;
+      const xMin = Math.min(...iterData.map(d => d.x)) - 2;
+      const xMax = Math.max(...iterData.map(d => d.x)) + 2;
+      const step = (xMax - xMin) / 100;
+      const xValues = [], yValues = [];
+
+      for (let x = xMin; x <= xMax; x += step) {
+        xValues.push(x);
+        yValues.push(fEval.evaluate({ x }));
+      }
+
+      const pointDataset = iterData.map(d => ({ x: d.x, y: d.fx }));
+
+      let datasets = [
+        {
+          label: 'f(x)',
+          data: xValues.map((x, i) => ({ x, y: yValues[i] })),
+          borderColor: '#2563eb',
+          borderWidth: 2,
+          fill: false,
+          tension: 0.1
+        },
+        {
+          label: '迭代点',
+          data: pointDataset,
+          showLine: false,
+          pointBackgroundColor: 'red',
+          pointRadius: 6,
+          type: 'scatter'
+        }
+      ];
+
+      if (showTangents) {
+        iterData.forEach((d, idx) => {
+          const x0 = d.x;
+          const y0 = d.fx;
+          const slope = d.dfx;
+          const delta = 1;
+          const lineData = [
+            { x: x0 - delta, y: y0 + slope * (-delta) },
+            { x: x0 + delta, y: y0 + slope * (delta) }
+          ];
+          datasets.push({
+            label: `切线 ${idx + 1}`,
+            data: lineData,
+            borderColor: generateColor(idx, iterData.length),
+            borderDash: [5, 5],
+            borderWidth: 1.5,
+            fill: false,
+            showLine: true,
+            pointRadius: 0
+          });
+        });
+      }
+
+      if (chart) chart.destroy();
+      chart = new Chart(canvas, {
+        type: 'line',
+        data: { datasets },
+        options: {
+          responsive: true,
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'x' }
+            },
+            y: {
+              title: { display: true, text: 'f(x)' }
+            }
+          }
+        }
+      });
+    }
+
+    function generateColor(i, total) {
+      const hue = Math.floor((360 * i) / total);
+      return `hsl(${hue}, 70%, 50%)`;
+    }
+
+    document.getElementById("showTangents").addEventListener("change", () => {
+      if (latestIterData) {
+        drawChart(latestIterData.fEval, latestIterData.iterData);
+      }
+    });
+  </script>
+</body>
+</html>
